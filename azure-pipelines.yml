@@ -1,0 +1,23 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: Maven@3
+  displayName: 'Build Mule App'
+  inputs:
+    mavenPomFile: 'pom.xml'
+    goals: 'clean package'
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.11'
+
+- script: |
+    npm install -g @railway/cli
+    echo "Deploying to Railway..."
+    railway up --service mule-logger --yes
+  displayName: 'Deploy to Railway (FREE forever)'
+
+  env:
+    RAILWAY_TOKEN: $(RAILWAY_TOKEN)
