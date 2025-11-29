@@ -1,4 +1,4 @@
-name: Mule CI/CD with Maven
+name: Mule CI/CD → Docker Deployment
 
 on:
   push:
@@ -7,83 +7,49 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
-    name: Build and Test Mule Application
+  build-and-deploy:
     runs-on: ubuntu-latest
-    
+    name: Build, Test & Push to Docker Hub
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: 'maven'
-    
-    - name: Display versions
-      run: |
-        java -version
-        mvn -version
-    
-    - name: Build with Maven
-      run: mvn clean package -DskipTests
-    
-    - name: Run tests
-      run: mvn test
-      continue-on-error: false
-    
-    - name: List build artifacts
-      run: |
-        echo "Generated files in target directory:"
-        ls -lh target/
-        echo ""
-        echo "JAR files:"
-        find target -name "*.jar"
-    
-    - name: Upload JAR artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: mule-application
-        path: target/*.jar
-        retention-days: 30
-    
-    - name: Generate build summary
-      run: |
-        echo "### Build Summary :rocket:" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Build Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Java Version:** 17" >> $GITHUB_STEP_SUMMARY
-        echo "- **Mule Version:** 4.8.0" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Build completed successfully!" >> $GITHUB_STEP_SUMMARY
 
-  package:
-    name: Create Release Package
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Download artifact
-      uses: actions/download-artifact@v4
+    - name: Build with Maven
+      run: mvn -B clean package -DskipTests
+
+    - name: Run tests
+      run: mvn -B test
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
       with:
-        name: mule-application
-    
-    - name: Create release package
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build & Push Docker Image
       run: |
-        mkdir -p release
-        cp *.jar release/
-        cd release
-        ls -lh
-    
-    - name: Upload release package
-      uses: actions/upload-artifact@v4
-      with:
-        name: mule-release-${{ github.run_number }}
-        path: release/
-        retention-days: 90
+        IMAGE=${{ secrets.DOCKER_USERNAME }}/mule-logger-hello:latest
+        docker build -t $IMAGE .
+        docker push $IMAGE
+
+    - name: Success Summary
+      run: |
+        echo "# Mule App Auto-Deployed to Docker Hub" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Image: \`${{ secrets.DOCKER_USERNAME }}/mule-logger-hello:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "docker run -d -p 8081:8081 ${{ secrets.DOCKER_USERNAME }}/mule-logger-hello:latest" >> $GITHUB_STEP_SUMMARY
+        echo "curl -X POST http://localhost:8081/sayhello" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
